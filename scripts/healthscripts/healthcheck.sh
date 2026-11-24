@@ -14,10 +14,11 @@ fail() {
 }
 
 # Check 1: the app's own tests
-# TODO 1: Run the tests inside the app container:
-#   docker compose exec -T app npm test --silent
-# Hide its output. Call pass if it succeeds, or fail with a message if it does not.
-
+if docker compose exec -T app npm test --silent > /dev/null 2>&1; then
+  pass "app tests"
+else
+  fail "app tests failed (run: docker compose exec app npm test)"
+fi
 
 # Checks 2 and 3: HTTP endpoints
 check_endpoint() {
@@ -26,19 +27,25 @@ check_endpoint() {
   local status
   local curl_exit
 
-  # TODO 2: Request "$url" with curl. Save only the HTTP status code in status.
-  # Give up if there is no connection after 2 seconds, or no full answer after 5 seconds.
-  # Save curl's exit code in curl_exit straight after the curl line.
+  status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+    --connect-timeout 2 --max-time 5 "$url")
+  curl_exit=$?
 
-
-  # TODO 3: Report one of three results:
-  #   curl failed      -> fail "<path>: no response (curl exit <code>)"
-  #   status not 200   -> fail "<path>: returned <status>, expected 200"
-  #   status is 200    -> pass "<path>: returned 200"
-
+  if [ "$curl_exit" -ne 0 ]; then
+    fail "${path}: no response (curl exit ${curl_exit})"
+  elif [ "$status" != "200" ]; then
+    fail "${path}: returned ${status}, expected 200"
+  else
+    pass "${path}: returned 200"
+  fi
 }
 
 check_endpoint /health
 check_endpoint /api/events
 
-# TODO 4: Print how many checks failed. Exit 1 if any failed, otherwise exit 0.
+if [ "$failures" -gt 0 ]; then
+  printf '%s check(s) failed\n' "$failures" >&2
+  exit 1
+fi
+printf 'All checks passed\n'
+exit 0
